@@ -1,0 +1,228 @@
+{% extends 'base.html' %}
+
+{% block title %}Firewall Rules Management - FirewallGuard{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column gap-4">
+
+  <!-- Header & Main Controls -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+    <div>
+      <h2 class="fw-bold text-white mb-1">Firewall Rule Inventory & Policies</h2>
+      <p class="text-secondary small mb-0">Configure, organize, enable/disable, and deploy filtering rules to Windows Defender Firewall.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      {% if current_user.role in ['Administrator', 'Security Operator'] %}
+      <button class="btn btn-outline-custom" id="btnApplyAll">
+        <i class="bi bi-shield-check me-1"></i> Synchronize Windows Firewall
+      </button>
+      {% endif %}
+      {% if current_user.role == 'Administrator' %}
+      <button class="btn btn-primary-glow" onclick="openCreateRuleModal()">
+        <i class="bi bi-plus-lg me-1"></i> Add New Rule
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Role Notification Alert -->
+  {% if current_user.role == 'Security Operator' %}
+  <div class="alert alert-warning py-2 px-3 small d-flex align-items-center gap-2 mb-0">
+    <i class="bi bi-shield-exclamation fs-5"></i>
+    <div><strong>Operator Mode:</strong> You can enable/disable rules and sync with Windows Defender. Creating or deleting rules requires the Administrator role.</div>
+  </div>
+  {% elif current_user.role == 'Viewer' %}
+  <div class="alert alert-info py-2 px-3 small d-flex align-items-center gap-2 mb-0">
+    <i class="bi bi-eye-fill fs-5"></i>
+    <div><strong>Viewer Mode:</strong> Read-only audit access. Rule modifications and toggles are restricted.</div>
+  </div>
+  {% endif %}
+
+  <!-- Filter & Search Bar -->
+  <div class="security-card p-3">
+    <div class="row g-2 align-items-center">
+      <!-- Search Input -->
+      <div class="col-md-4">
+        <div class="input-group">
+          <span class="input-group-text bg-dark border-secondary text-secondary"><i class="bi bi-search"></i></span>
+          <input type="text" class="form-control" id="filterSearch" placeholder="Search rules, IP addresses, ports...">
+        </div>
+      </div>
+
+      <!-- Direction Filter -->
+      <div class="col-6 col-md-2">
+        <select class="form-select" id="filterDirection">
+          <option value="All">All Directions</option>
+          <option value="Inbound">Inbound Only</option>
+          <option value="Outbound">Outbound Only</option>
+        </select>
+      </div>
+
+      <!-- Action Filter -->
+      <div class="col-6 col-md-2">
+        <select class="form-select" id="filterAction">
+          <option value="All">All Actions</option>
+          <option value="Allow">Allow Rules</option>
+          <option value="Block">Block Rules</option>
+        </select>
+      </div>
+
+      <!-- Protocol Filter -->
+      <div class="col-6 col-md-2">
+        <select class="form-select" id="filterProtocol">
+          <option value="All">All Protocols</option>
+          <option value="TCP">TCP</option>
+          <option value="UDP">UDP</option>
+          <option value="ICMP">ICMP</option>
+        </select>
+      </div>
+
+      <!-- Reset Button -->
+      <div class="col-6 col-md-2 text-end">
+        <button class="btn btn-outline-custom w-100" onclick="resetFilters()">
+          <i class="bi bi-arrow-counterclockwise me-1"></i> Reset Filters
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rules Table -->
+  <div class="security-card p-0">
+    <div class="p-3 border-bottom border-secondary d-flex align-items-center justify-content-between">
+      <div class="fw-semibold text-light">
+        <i class="bi bi-table text-cyan me-2"></i>Active Rule Set (<span id="ruleCountDisplay">{{ rules|length }}</span> Rules)
+      </div>
+      <small class="text-muted">Changes commit directly to Windows Defender subsystem</small>
+    </div>
+
+    <div class="custom-table-container border-0 rounded-0">
+      <table class="table-custom">
+        <thead>
+          <tr>
+            <th style="width: 50px;">#</th>
+            <th>Rule Name & Description</th>
+            <th>Direction</th>
+            <th>Action</th>
+            <th>Protocol</th>
+            <th>Source Endpoint</th>
+            <th>Destination Endpoint</th>
+            <th>Profile</th>
+            <th>Status</th>
+            <th class="text-end" style="width: 140px;">Operations</th>
+          </tr>
+        </thead>
+        <tbody id="rulesTableBody">
+          {% for r in rules %}
+          <tr id="rule-row-{{ r.id }}" 
+              data-direction="{{ r.direction }}" 
+              data-action="{{ r.action }}" 
+              data-protocol="{{ r.protocol }}" 
+              data-profile="{{ r.profile }}">
+            <td class="font-mono text-muted">{{ r.id }}</td>
+            <td>
+              <div class="fw-semibold text-light">{{ r.name }}</div>
+              <small class="text-secondary">{{ r.description or 'No custom description' }}</small>
+            </td>
+            <td>
+              {% if r.direction == 'Inbound' %}
+              <span class="badge-direction-in"><i class="bi bi-arrow-down-left me-1"></i>Inbound</span>
+              {% else %}
+              <span class="badge-direction-out"><i class="bi bi-arrow-up-right me-1"></i>Outbound</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.action == 'Allow' %}
+              <span class="badge-allow"><i class="bi bi-check-circle me-1"></i>Allow</span>
+              {% else %}
+              <span class="badge-block"><i class="bi bi-slash-circle me-1"></i>Block</span>
+              {% endif %}
+            </td>
+            <td><span class="badge-protocol">{{ r.protocol }}</span></td>
+            <td>
+              <span class="ip-badge">{{ r.source_ip }}</span>
+              {% if r.source_port != 'Any' and r.source_port != 'N/A' %}<span class="port-badge ms-1">:{{ r.source_port }}</span>{% endif %}
+            </td>
+            <td>
+              <span class="ip-badge text-warning">{{ r.dest_ip }}</span>
+              {% if r.dest_port != 'Any' and r.dest_port != 'N/A' %}<span class="port-badge ms-1">:{{ r.dest_port }}</span>{% endif %}
+            </td>
+            <td>
+              <span class="badge bg-dark border border-secondary text-light font-mono">{{ r.profile }}</span>
+            </td>
+            <td>
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" role="switch" id="switch-{{ r.id }}" 
+                       {% if r.enabled %}checked{% endif %} 
+                       {% if current_user.role == 'Viewer' %}disabled{% endif %}
+                       onchange="toggleRule({{ r.id }}, '{{ r.name }}', this)">
+              </div>
+            </td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm">
+                <!-- View PowerShell / Netsh details -->
+                <button type="button" class="btn btn-outline-custom" title="View PowerShell / netsh command" 
+                        onclick='viewRuleCommand({{ r.name|tojson }}, {{ r.commands.powershell|tojson }}, {{ r.commands.netsh|tojson }})'>
+                  <i class="bi bi-terminal"></i>
+                </button>
+
+                {% if current_user.role == 'Administrator' %}
+                <!-- Edit Rule -->
+                <button type="button" class="btn btn-outline-custom" title="Edit Rule" 
+                        onclick='openEditRuleModal({{ r|tojson }})'>
+                  <i class="bi bi-pencil-square"></i>
+                </button>
+                <!-- Delete Rule -->
+                <button type="button" class="btn btn-outline-danger" title="Delete Rule" 
+                        onclick="deleteRule({{ r.id }}, '{{ r.name }}')">
+                  <i class="bi bi-trash3"></i>
+                </button>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Include Modal -->
+{% include 'modals/rule_modal.html' %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/rules.js') }}"></script>
+<script>
+  function resetFilters() {
+    document.getElementById('filterSearch').value = '';
+    document.getElementById('filterDirection').value = 'All';
+    document.getElementById('filterAction').value = 'All';
+    document.getElementById('filterProtocol').value = 'All';
+    const rows = document.querySelectorAll('#rulesTableBody tr');
+    rows.forEach(row => row.style.display = '');
+  }
+
+  // Handle query params like quick_block
+  document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('action') === 'quick_block') {
+      const ip = sessionStorage.getItem('quick_block_ip') || urlParams.get('ip');
+      const port = sessionStorage.getItem('quick_block_port') || 'Any';
+      openCreateRuleModal();
+      document.getElementById('ruleName').value = `Block-Threat-${ip.replace(/\./g, '-')}`;
+      document.getElementById('ruleDesc').value = `Immediate containment rule generated from live network inspector`;
+      document.getElementById('ruleAction').value = 'Block';
+      document.getElementById('ruleDirection').value = 'Inbound';
+      document.getElementById('ruleSrcIp').value = ip;
+      document.getElementById('ruleDstPort').value = port;
+      
+      const event = new Event('input');
+      document.getElementById('ruleName').dispatchEvent(event);
+      showToast('Rule Prefilled', `Firewall rule draft created to block ${ip}`, 'info');
+    }
+  });
+</script>
+{% endblock %}

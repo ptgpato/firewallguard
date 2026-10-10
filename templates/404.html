@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+
+{% block title %}404 Not Found - FirewallGuard{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-center py-5">
+  <div class="security-card text-center p-5" style="max-width: 500px;">
+    <div class="text-warning mb-3" style="font-size: 3.5rem;">
+      <i class="bi bi-exclamation-octagon-fill"></i>
+    </div>
+    <h3 class="fw-bold text-white mb-2">404 - Page Not Found</h3>
+    <p class="text-secondary mb-4">
+      The requested firewall module or resource could not be found.
+    </p>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-primary-glow">
+      <i class="bi bi-arrow-left me-1"></i> Return to Dashboard
+    </a>
+  </div>
+</div>
+{% endblock %}

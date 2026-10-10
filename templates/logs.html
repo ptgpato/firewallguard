@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+
+{% block title %}Security & Traffic Logs - FirewallGuard{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column gap-4">
+
+  <!-- Header -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+    <div>
+      <h2 class="fw-bold text-white mb-1">Security Event & Traffic Logs</h2>
+      <p class="text-secondary small mb-0">Searchable and exportable audit trail of allowed and blocked network packets.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <!-- Export Options Dropdown -->
+      <div class="dropdown">
+        <button class="btn btn-outline-custom dropdown-toggle" type="button" data-bs-toggle="dropdown">
+          <i class="bi bi-download me-1"></i> Export Logs
+        </button>
+        <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end shadow">
+          <li><a class="dropdown-item" href="javascript:void(0)" onclick="exportLogs('csv')"><i class="bi bi-filetype-csv me-2 text-success"></i> Export as CSV</a></li>
+          <li><a class="dropdown-item" href="javascript:void(0)" onclick="exportLogs('json')"><i class="bi bi-filetype-json me-2 text-warning"></i> Export as JSON</a></li>
+          <li><hr class="dropdown-divider border-secondary"></li>
+          <li><a class="dropdown-item" href="javascript:void(0)" onclick="printLogReport()"><i class="bi bi-printer me-2 text-cyan"></i> Print Security Report</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter & Search Panel -->
+  <div class="security-card p-3">
+    <div class="row g-2 align-items-center">
+      <!-- Search Input -->
+      <div class="col-md-5">
+        <div class="input-group">
+          <span class="input-group-text bg-dark border-secondary text-secondary"><i class="bi bi-search"></i></span>
+          <input type="text" class="form-control" id="logSearch" placeholder="Filter by IP, Port, Rule name, or Reason...">
+        </div>
+      </div>
+
+      <!-- Action Filter -->
+      <div class="col-6 col-md-2">
+        <select class="form-select" id="logAction">
+          <option value="All">All Actions</option>
+          <option value="Allow">Allowed Only</option>
+          <option value="Block">Blocked Only</option>
+        </select>
+      </div>
+
+      <!-- Direction Filter -->
+      <div class="col-6 col-md-2">
+        <select class="form-select" id="logDirection">
+          <option value="All">All Directions</option>
+          <option value="Inbound">Inbound</option>
+          <option value="Outbound">Outbound</option>
+        </select>
+      </div>
+
+      <!-- Protocol Filter -->
+      <div class="col-6 col-md-2">
+        <select class="form-select" id="logProtocol">
+          <option value="All">All Protocols</option>
+          <option value="TCP">TCP</option>
+          <option value="UDP">UDP</option>
+          <option value="ICMP">ICMP</option>
+        </select>
+      </div>
+
+      <!-- Clear Button -->
+      <div class="col-6 col-md-1 text-end">
+        <button class="btn btn-outline-custom w-100" onclick="clearLogFilters()" title="Reset filters">
+          <i class="bi bi-x-circle"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Logs Table -->
+  <div class="security-card p-0">
+    <div class="p-3 border-bottom border-secondary d-flex align-items-center justify-content-between">
+      <div class="fw-semibold text-light">
+        <i class="bi bi-journal-text text-cyan me-2"></i>Traffic Inspection Audit Trail
+      </div>
+      <span class="badge bg-dark border border-secondary text-secondary font-mono" id="logResultCount">
+        Showing {{ logs|length }} logged events
+      </span>
+    </div>
+
+    <div class="custom-table-container border-0 rounded-0">
+      <table class="table-custom">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Enforcement</th>
+            <th>Direction</th>
+            <th>Protocol</th>
+            <th>Source Endpoint</th>
+            <th>Destination Endpoint</th>
+            <th>Matched Rule</th>
+            <th>Inspection Reason</th>
+          </tr>
+        </thead>
+        <tbody id="logsTableBody">
+          {% for log in logs %}
+          <tr>
+            <td class="font-mono text-muted small">{{ log.timestamp }}</td>
+            <td>
+              {% if log.action == 'Allow' %}
+              <span class="badge-allow"><i class="bi bi-shield-check me-1"></i>Allowed</span>
+              {% else %}
+              <span class="badge-block"><i class="bi bi-shield-x me-1"></i>Blocked</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if log.direction == 'Inbound' %}
+              <span class="badge-direction-in"><i class="bi bi-arrow-down-left me-1"></i>Inbound</span>
+              {% else %}
+              <span class="badge-direction-out"><i class="bi bi-arrow-up-right me-1"></i>Outbound</span>
+              {% endif %}
+            </td>
+            <td><span class="badge-protocol">{{ log.protocol }}</span></td>
+            <td>
+              <span class="ip-badge">{{ log.source_ip }}</span>
+              {% if log.source_port != 'N/A' %}<span class="port-badge ms-1">:{{ log.source_port }}</span>{% endif %}
+            </td>
+            <td>
+              <span class="ip-badge text-warning">{{ log.dest_ip }}</span>
+              {% if log.dest_port != 'N/A' %}<span class="port-badge ms-1">:{{ log.dest_port }}</span>{% endif %}
+            </td>
+            <td class="fw-semibold text-light">{{ log.rule_name or 'Default Policy' }}</td>
+            <td class="text-secondary small">{{ log.reason or 'Firewall evaluation pass' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal for Rule Creation (Global accessibility) -->
+{% include 'modals/rule_modal.html' %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/rules.js') }}"></script>
+<script src="{{ url_for('static', filename='js/logs.js') }}"></script>
+<script>
+  function clearLogFilters() {
+    document.getElementById('logSearch').value = '';
+    document.getElementById('logAction').value = 'All';
+    document.getElementById('logDirection').value = 'All';
+    document.getElementById('logProtocol').value = 'All';
+    fetchFilteredLogs();
+  }
+
+  // Pre-filter if query params exist (e.g. ?action=Block)
+  document.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('action')) {
+      const act = params.get('action');
+      const actionSelect = document.getElementById('logAction');
+      if (actionSelect) {
+        actionSelect.value = act;
+        fetchFilteredLogs();
+      }
+    }
+  });
+</script>
+{% endblock %}

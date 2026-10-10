@@ -1,0 +1,333 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - FirewallGuard Security Console{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column gap-4">
+
+  <!-- Top Title & Quick Actions Header -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+    <div>
+      <h2 class="fw-bold text-white mb-1">Network Security & Firewall Overview</h2>
+      <p class="text-secondary small mb-0">Centralized Windows Defender Firewall rule orchestration and network filtering telemetry.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-outline-custom" id="btnSyncEngine" onclick="syncEngine()">
+        <i class="bi bi-arrow-repeat me-1"></i> Check Engine Status
+      </button>
+      {% if current_user.role == 'Administrator' %}
+      <button class="btn btn-primary-glow" onclick="openCreateRuleModal()">
+        <i class="bi bi-shield-plus me-1"></i> Create Rule
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- KPI Summary Stat Cards -->
+  <div class="row g-3">
+    <!-- Active Rules -->
+    <div class="col-sm-6 col-xl-3">
+      <div class="security-card">
+        <div class="card-kpi">
+          <div>
+            <div class="kpi-title">Active Rules</div>
+            <div class="kpi-value text-cyan">{{ stats.active_rules }} <span class="fs-6 text-muted fw-normal">/ {{ stats.total_rules }}</span></div>
+          </div>
+          <div class="kpi-icon-wrap icon-cyan">
+            <i class="bi bi-sliders"></i>
+          </div>
+        </div>
+        <div class="mt-3 small text-secondary d-flex align-items-center justify-content-between">
+          <span>Configured Policies</span>
+          <a href="{{ url_for('rules') }}" class="text-cyan text-decoration-none">Manage <i class="bi bi-chevron-right"></i></a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Blocked Connections -->
+    <div class="col-sm-6 col-xl-3">
+      <div class="security-card">
+        <div class="card-kpi">
+          <div>
+            <div class="kpi-title">Blocked Threats</div>
+            <div class="kpi-value text-danger">{{ stats.blocked_traffic }}</div>
+          </div>
+          <div class="kpi-icon-wrap icon-red">
+            <i class="bi bi-shield-x"></i>
+          </div>
+        </div>
+        <div class="mt-3 small text-secondary d-flex align-items-center justify-content-between">
+          <span>Filtered Inbound/Outbound</span>
+          <a href="{{ url_for('logs') }}?action=Block" class="text-danger text-decoration-none">View Blocked <i class="bi bi-chevron-right"></i></a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Allowed Connections -->
+    <div class="col-sm-6 col-xl-3">
+      <div class="security-card">
+        <div class="card-kpi">
+          <div>
+            <div class="kpi-title">Allowed Traffic</div>
+            <div class="kpi-value text-success">{{ stats.allowed_traffic }}</div>
+          </div>
+          <div class="kpi-icon-wrap icon-green">
+            <i class="bi bi-shield-check"></i>
+          </div>
+        </div>
+        <div class="mt-3 small text-secondary d-flex align-items-center justify-content-between">
+          <span>Permitted Network Flows</span>
+          <a href="{{ url_for('logs') }}?action=Allow" class="text-success text-decoration-none">View Allowed <i class="bi bi-chevron-right"></i></a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Engine Health -->
+    <div class="col-sm-6 col-xl-3">
+      <div class="security-card">
+        <div class="card-kpi">
+          <div>
+            <div class="kpi-title">Protection Mode</div>
+            <div class="kpi-value text-light fs-4">Active</div>
+          </div>
+          <div class="kpi-icon-wrap icon-amber">
+            <i class="bi bi-hdd-network"></i>
+          </div>
+        </div>
+        <div class="mt-3 small text-secondary d-flex align-items-center justify-content-between">
+          <span>NetSecurity / netsh</span>
+          <span class="badge bg-success-subtle text-success border border-success">All Profiles ON</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Windows Defender Profile Status Cards -->
+  <div>
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h5 class="fw-bold text-white mb-0"><i class="bi bi-shield-shaded text-cyan me-2"></i>Windows Defender Firewall Profiles</h5>
+      <small class="text-muted">Managed via PowerShell <code>Set-NetFirewallProfile</code></small>
+    </div>
+    <div class="row g-3">
+      {% for prof in profiles %}
+      <div class="col-md-4">
+        <div class="security-card p-3">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi {% if prof.profile_name == 'Domain' %}bi-building{% elif prof.profile_name == 'Private' %}bi-house-door-fill{% else %}bi-globe2{% endif %} text-cyan fs-5"></i>
+              <strong class="text-light">{{ prof.profile_name }} Profile</strong>
+            </div>
+            <div class="form-check form-switch mb-0">
+              <input class="form-check-input" type="checkbox" role="switch" id="prof-{{ prof.profile_name }}" {% if prof.is_enabled %}checked{% endif %} {% if current_user.role != 'Administrator' %}disabled{% endif %} onchange="toggleProfileState('{{ prof.profile_name }}', this)">
+            </div>
+          </div>
+          <div class="d-flex justify-content-between text-secondary small pt-2 border-top border-secondary">
+            <span>Inbound: <strong class="text-danger">{{ prof.default_inbound }}</strong></span>
+            <span>Outbound: <strong class="text-success">{{ prof.default_outbound }}</strong></span>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Visual Analytics & Charts Section -->
+  <div class="row g-3">
+    <!-- Live Bandwidth Chart -->
+    <div class="col-lg-8">
+      <div class="security-card h-100">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div>
+            <h6 class="fw-bold text-white mb-0"><i class="bi bi-activity text-cyan me-2"></i>Live Network Traffic Throughput</h6>
+            <small class="text-muted">Real-time socket stream (KB/s)</small>
+          </div>
+          <div class="d-flex gap-3 text-secondary small">
+            <div>Inbound: <strong class="text-cyan" id="dashInRate">284.5 KB/s</strong></div>
+            <div>Outbound: <strong class="text-purple" id="dashOutRate">192.1 KB/s</strong></div>
+          </div>
+        </div>
+        <div style="height: 250px; position: relative;">
+          <canvas id="dashboardTrafficChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Traffic Distribution Donut Chart -->
+    <div class="col-lg-4">
+      <div class="security-card h-100">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div>
+            <h6 class="fw-bold text-white mb-0"><i class="bi bi-pie-chart text-cyan me-2"></i>Traffic Filter Ratio</h6>
+            <small class="text-muted">Allow vs Block enforcement</small>
+          </div>
+        </div>
+        <div style="height: 250px; position: relative;" class="d-flex align-items-center justify-content-center">
+          <canvas id="trafficRatioChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Security Log Feed -->
+  <div class="security-card">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h6 class="fw-bold text-white mb-0"><i class="bi bi-shield-exclamation text-cyan me-2"></i>Recent Firewall Filter Events</h6>
+        <small class="text-muted">Latest packet inspection logs evaluated against active rules</small>
+      </div>
+      <a href="{{ url_for('logs') }}" class="btn btn-sm btn-outline-custom">
+        <i class="bi bi-box-arrow-up-right me-1"></i> View Full Security Logs
+      </a>
+    </div>
+
+    <div class="custom-table-container">
+      <table class="table-custom">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Action</th>
+            <th>Direction</th>
+            <th>Protocol</th>
+            <th>Source Endpoint</th>
+            <th>Destination Endpoint</th>
+            <th>Matched Rule</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in recent_logs %}
+          <tr>
+            <td class="font-mono text-muted small">{{ log.timestamp }}</td>
+            <td>
+              {% if log.action == 'Allow' %}
+              <span class="badge-allow"><i class="bi bi-shield-check me-1"></i>Allow</span>
+              {% else %}
+              <span class="badge-block"><i class="bi bi-shield-x me-1"></i>Block</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if log.direction == 'Inbound' %}
+              <span class="badge-direction-in"><i class="bi bi-arrow-down-left me-1"></i>In</span>
+              {% else %}
+              <span class="badge-direction-out"><i class="bi bi-arrow-up-right me-1"></i>Out</span>
+              {% endif %}
+            </td>
+            <td><span class="badge-protocol">{{ log.protocol }}</span></td>
+            <td><span class="ip-badge">{{ log.source_ip }}</span><span class="port-badge ms-1">:{{ log.source_port }}</span></td>
+            <td><span class="ip-badge text-warning">{{ log.dest_ip }}</span><span class="port-badge ms-1">:{{ log.dest_port }}</span></td>
+            <td class="fw-semibold text-light">{{ log.rule_name }}</td>
+            <td class="text-secondary small">{{ log.reason }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal for Rule Creation (Global accessibility) -->
+{% include 'modals/rule_modal.html' %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/rules.js') }}"></script>
+<script>
+  // Dashboard visual charts
+  document.addEventListener('DOMContentLoaded', () => {
+    // 1. Throughput Line Chart
+    const ctxTraffic = document.getElementById('dashboardTrafficChart');
+    if (ctxTraffic) {
+      const labels = ['00:00', '00:05', '00:10', '00:15', '00:20', '00:25', '00:30', '00:35', '00:40', '00:45'];
+      const inboundData = [180, 240, 310, 290, 420, 380, 290, 350, 410, 320];
+      const outboundData = [120, 150, 190, 160, 220, 210, 180, 240, 210, 190];
+
+      const dashChart = new Chart(ctxTraffic, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Inbound (KB/s)',
+              data: inboundData,
+              borderColor: '#06b6d4',
+              backgroundColor: 'rgba(6, 182, 212, 0.12)',
+              fill: true,
+              tension: 0.35,
+              borderWidth: 2
+            },
+            {
+              label: 'Outbound (KB/s)',
+              data: outboundData,
+              borderColor: '#8b5cf6',
+              backgroundColor: 'rgba(139, 92, 246, 0.1)',
+              fill: true,
+              tension: 0.35,
+              borderWidth: 2
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#94a3b8' } } },
+          scales: {
+            x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#64748b' } },
+            y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#64748b' }, beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    // 2. Allowed vs Blocked Ratio Doughnut
+    const ctxRatio = document.getElementById('trafficRatioChart');
+    if (ctxRatio) {
+      new Chart(ctxRatio, {
+        type: 'doughnut',
+        data: {
+          labels: ['Allowed Traffic', 'Blocked Traffic'],
+          datasets: [{
+            data: [{{ stats.allowed_traffic }}, {{ stats.blocked_traffic }}],
+            backgroundColor: ['#10b981', '#ef4444'],
+            borderColor: '#0f172a',
+            borderWidth: 3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#94a3b8', padding: 15 } }
+          },
+          cutout: '70%'
+        }
+      });
+    }
+  });
+
+  async function toggleProfileState(profileName, checkbox) {
+    try {
+      const res = await fetch('/api/profiles/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile_name: profileName, is_enabled: checkbox.checked })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('Profile Updated', data.message, 'success');
+      } else {
+        checkbox.checked = !checkbox.checked;
+        showToast('Permission Denied', data.error || 'Failed to update profile.', 'danger');
+      }
+    } catch (err) {
+      checkbox.checked = !checkbox.checked;
+      showToast('Error', 'Could not reach server.', 'danger');
+    }
+  }
+
+  function syncEngine() {
+    showToast('Windows Firewall Status', 'All 3 profiles (Domain, Private, Public) are fully operational and synchronized.', 'info');
+  }
+</script>
+{% endblock %}

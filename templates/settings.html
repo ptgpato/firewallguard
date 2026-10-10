@@ -1,0 +1,500 @@
+{% extends 'base.html' %}
+
+{% block title %}System Profiles & Settings - FirewallGuard{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column gap-4">
+
+  <!-- Header -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+    <div>
+      <h2 class="fw-bold text-white mb-1">Firewall Profiles & System Administration</h2>
+      <p class="text-secondary small mb-0">Manage Windows Defender profile scopes, RBAC system accounts, and audit execution telemetry.</p>
+    </div>
+  </div>
+
+  <!-- Row 1: Profile Scope Management -->
+  <div class="security-card">
+    <div class="d-flex align-items-center justify-content-between mb-3 border-bottom border-secondary pb-3">
+      <div>
+        <h5 class="fw-bold text-white mb-1"><i class="bi bi-sliders2 text-cyan me-2"></i>Windows Defender Profile Policies</h5>
+        <small class="text-muted">Global default inbound and outbound firewall actions per network profile</small>
+      </div>
+      <span class="badge bg-primary-subtle text-cyan border border-info">NetSecurity Subsystem</span>
+    </div>
+
+    <div class="row g-3">
+      {% for prof in profiles %}
+      <div class="col-lg-4">
+        <div class="p-3 rounded bg-dark border border-secondary">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <h6 class="fw-bold text-light mb-0">{{ prof.profile_name }} Network Profile</h6>
+            <div class="form-check form-switch mb-0">
+              <input class="form-check-input" type="checkbox" role="switch" id="setting-prof-{{ prof.profile_name }}" 
+                     {% if prof.is_enabled %}checked{% endif %} 
+                     {% if current_user.role != 'Administrator' %}disabled{% endif %}
+                     onchange="toggleProfileState('{{ prof.profile_name }}', this)">
+            </div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small text-muted">Default Inbound Policy:</label>
+            <div class="d-flex align-items-center justify-content-between">
+              <span class="badge-block"><i class="bi bi-shield-x me-1"></i>{{ prof.default_inbound }} Unsolicited</span>
+              <small class="text-secondary">Dropped unless rule matches</small>
+            </div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small text-muted">Default Outbound Policy:</label>
+            <div class="d-flex align-items-center justify-content-between">
+              <span class="badge-allow"><i class="bi bi-shield-check me-1"></i>{{ prof.default_outbound }} Traffic</span>
+              <small class="text-secondary">Permitted standard egress</small>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Row 2: User Management (Admin Only) -->
+  {% if current_user.role == 'Administrator' %}
+  <div class="security-card">
+    <div class="d-flex flex-wrap align-items-center justify-content-between mb-3 border-bottom border-secondary pb-3 gap-2">
+      <div>
+        <h5 class="fw-bold text-white mb-1"><i class="bi bi-people-fill text-cyan me-2"></i>Role-Based User Management (RBAC)</h5>
+        <small class="text-muted">Manage system operators, administrators, and auditor credentials (Secure Password Hashing)</small>
+      </div>
+      <button class="btn btn-sm btn-primary-glow" data-bs-toggle="modal" data-bs-target="#addUserModal">
+        <i class="bi bi-person-plus-fill me-1"></i> Add System User
+      </button>
+    </div>
+
+    <div class="custom-table-container">
+      <table class="table-custom">
+        <thead>
+          <tr>
+            <th>Full Name</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Role & Tier</th>
+            <th>Created</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="userTableBody">
+          {% for u in users %}
+          <tr id="user-row-{{ u.id }}">
+            <td class="fw-semibold text-light">{{ u.full_name }}</td>
+            <td class="font-mono text-cyan">{{ u.username }}</td>
+            <td class="text-secondary">{{ u.email }}</td>
+            <td>
+              {% if u.role == 'Administrator' %}
+              <span class="badge role-badge-admin"><i class="bi bi-shield-lock me-1"></i>Administrator</span>
+              {% elif u.role == 'Security Operator' %}
+              <span class="badge role-badge-operator"><i class="bi bi-shield me-1"></i>Security Operator</span>
+              {% else %}
+              <span class="badge role-badge-viewer"><i class="bi bi-eye me-1"></i>Viewer / Auditor</span>
+              {% endif %}
+            </td>
+            <td class="font-mono text-muted small">{{ u.created_at }}</td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-custom" title="Edit Profile & Role" onclick='openEditUserModal({{ u|tojson }})'>
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-outline-custom" title="Reset Password" onclick="openResetPasswordModal({{ u.id }}, '{{ u.username }}')">
+                  <i class="bi bi-key"></i>
+                </button>
+                {% if u.id != current_user.id %}
+                <button class="btn btn-outline-danger" title="Delete User" onclick="deleteUser({{ u.id }}, '{{ u.username }}')">
+                  <i class="bi bi-trash3"></i>
+                </button>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Row 3: Log Retention & Purge (Admin Only) -->
+  <div class="security-card">
+    <div class="d-flex align-items-center justify-content-between mb-3 border-bottom border-secondary pb-3">
+      <div>
+        <h5 class="fw-bold text-white mb-1"><i class="bi bi-database-x text-danger me-2"></i>Security Log Maintenance</h5>
+        <small class="text-muted">Purge old traffic audit logs or clear entire database storage</small>
+      </div>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-3">
+      <button class="btn btn-outline-custom" onclick="purgeLogsOlderThan(30)">
+        <i class="bi bi-clock-history me-1"></i> Purge Logs Older Than 30 Days
+      </button>
+      <button class="btn btn-outline-custom" onclick="purgeLogsOlderThan(7)">
+        <i class="bi bi-clock-history me-1"></i> Purge Logs Older Than 7 Days
+      </button>
+      <button class="btn btn-outline-danger" onclick="purgeAllLogs()">
+        <i class="bi bi-trash3 me-1"></i> Clear All Traffic Logs
+      </button>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Row 4: PowerShell / Netsh Command Execution Audit Trail -->
+  <div class="security-card">
+    <div class="d-flex align-items-center justify-content-between mb-3 border-bottom border-secondary pb-3">
+      <div>
+        <h5 class="fw-bold text-white mb-1"><i class="bi bi-terminal text-cyan me-2"></i>PowerShell & NetSecurity Command Audit History</h5>
+        <small class="text-muted">Chronological log of system commands executed on the Windows Defender subsystem</small>
+      </div>
+    </div>
+
+    <div class="custom-table-container">
+      <table class="table-custom">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Dispatched PowerShell / Netsh Command</th>
+            <th>Executed By</th>
+            <th>Status</th>
+            <th>Subsystem Response</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in history %}
+          <tr>
+            <td class="font-mono text-muted small">{{ h.timestamp }}</td>
+            <td>
+              <div class="powershell-box py-1 px-2" style="font-size: 0.75rem;">{{ h.command }}</div>
+            </td>
+            <td class="text-secondary small">{{ h.executed_by }}</td>
+            <td>
+              <span class="badge {% if h.status == 'Success' %}bg-success-subtle text-success border border-success{% elif 'Warning' in h.status %}bg-warning-subtle text-warning border border-warning{% else %}bg-danger-subtle text-danger border border-danger{% endif %}">
+                {{ h.status }}
+              </span>
+            </td>
+            <td class="text-secondary small">{{ h.output }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal: Add System User -->
+<div class="modal fade" id="addUserModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold text-white"><i class="bi bi-person-plus text-cyan me-2"></i>Create New System User</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="addUserForm">
+        <div class="modal-body p-4">
+          <div class="mb-3">
+            <label class="form-label" for="newFullName">Full Name</label>
+            <input type="text" class="form-control" id="newFullName" placeholder="e.g. Jane Doe" required minlength="2">
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="newUsername">Username</label>
+            <input type="text" class="form-control" id="newUsername" placeholder="e.g. jdoe" required minlength="3" maxlength="30">
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="newEmail">Email Address</label>
+            <input type="email" class="form-control" id="newEmail" placeholder="e.g. jdoe@firewallguard.local" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="newPassword">Initial Password</label>
+            <input type="password" class="form-control" id="newPassword" placeholder="••••••••" required minlength="6">
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="newRole">Assigned RBAC Role</label>
+            <select class="form-select" id="newRole" required>
+              <option value="Viewer">Viewer (Read-Only Logs & Monitoring)</option>
+              <option value="Security Operator">Security Operator (Rule Enable/Disable & Traffic)</option>
+              <option value="Administrator">Administrator (Full Rule CRUD & User Management)</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary-glow">Create Account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Edit System User -->
+<div class="modal fade" id="editUserModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold text-white"><i class="bi bi-person-gear text-cyan me-2"></i>Edit User Profile & Role</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="editUserForm">
+        <div class="modal-body p-4">
+          <input type="hidden" id="editUserId">
+          <div class="mb-3">
+            <label class="form-label" for="editUsername">Username</label>
+            <input type="text" class="form-control" id="editUsername" disabled>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="editFullName">Full Name</label>
+            <input type="text" class="form-control" id="editFullName" required minlength="2">
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="editEmail">Email Address</label>
+            <input type="email" class="form-control" id="editEmail" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="editRole">Assigned RBAC Role</label>
+            <select class="form-select" id="editRole" required>
+              <option value="Viewer">Viewer (Read-Only Logs & Monitoring)</option>
+              <option value="Security Operator">Security Operator (Rule Enable/Disable & Traffic)</option>
+              <option value="Administrator">Administrator (Full Rule CRUD & User Management)</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary-glow">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Reset User Password (Admin) -->
+<div class="modal fade" id="adminResetPwdModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold text-white"><i class="bi bi-key text-warning me-2"></i>Reset Password for <span id="resetPwdTargetUser" class="text-cyan"></span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="adminResetPwdForm">
+        <div class="modal-body p-4">
+          <input type="hidden" id="resetPwdUserId">
+          <div class="mb-3">
+            <label class="form-label" for="adminNewPassword">New Password (min. 6 characters)</label>
+            <input type="password" class="form-control" id="adminNewPassword" required minlength="6" placeholder="Enter new password">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary-glow">Reset Password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal for Rule Creation (Global accessibility) -->
+{% include 'modals/rule_modal.html' %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/rules.js') }}"></script>
+<script>
+  async function toggleProfileState(profileName, checkbox) {
+    try {
+      const res = await fetch('/api/profiles/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile_name: profileName, is_enabled: checkbox.checked })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('Profile State Changed', data.message, 'success');
+      } else {
+        checkbox.checked = !checkbox.checked;
+        showToast('Permission Denied', data.error || 'Failed to update profile state.', 'danger');
+      }
+    } catch (err) {
+      checkbox.checked = !checkbox.checked;
+      showToast('Error', 'Failed to reach server.', 'danger');
+    }
+  }
+
+  // Create User Handler
+  const addUserForm = document.getElementById('addUserForm');
+  if (addUserForm) {
+    addUserForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        full_name: document.getElementById('newFullName').value.trim(),
+        username: document.getElementById('newUsername').value.trim(),
+        email: document.getElementById('newEmail').value.trim(),
+        password: document.getElementById('newPassword').value,
+        role: document.getElementById('newRole').value
+      };
+
+      try {
+        const res = await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('User Created', data.message, 'success');
+          const modal = bootstrap.Modal.getInstance(document.getElementById('addUserModal'));
+          if (modal) modal.hide();
+          setTimeout(() => { window.location.reload(); }, 500);
+        } else {
+          showToast('Error', data.error || 'Failed to create user.', 'danger');
+        }
+      } catch (err) {
+        showToast('Error', 'Network communication failed.', 'danger');
+      }
+    });
+  }
+
+  // Open Edit User Modal
+  function openEditUserModal(user) {
+    document.getElementById('editUserId').value = user.id;
+    document.getElementById('editUsername').value = user.username;
+    document.getElementById('editFullName').value = user.full_name;
+    document.getElementById('editEmail').value = user.email;
+    document.getElementById('editRole').value = user.role;
+
+    const modalEl = document.getElementById('editUserModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+  }
+
+  // Edit User Form Submit
+  const editUserForm = document.getElementById('editUserForm');
+  if (editUserForm) {
+    editUserForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const userId = document.getElementById('editUserId').value;
+      const payload = {
+        full_name: document.getElementById('editFullName').value.trim(),
+        email: document.getElementById('editEmail').value.trim(),
+        role: document.getElementById('editRole').value
+      };
+
+      try {
+        const res = await fetch(`/api/users/${userId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('User Updated', data.message, 'success');
+          const modal = bootstrap.Modal.getInstance(document.getElementById('editUserModal'));
+          if (modal) modal.hide();
+          setTimeout(() => { window.location.reload(); }, 500);
+        } else {
+          showToast('Error', data.error || 'Failed to update user.', 'danger');
+        }
+      } catch (err) {
+        showToast('Error', 'Server communication failed.', 'danger');
+      }
+    });
+  }
+
+  // Open Reset Password Modal
+  function openResetPasswordModal(userId, username) {
+    document.getElementById('resetPwdUserId').value = userId;
+    document.getElementById('resetPwdTargetUser').textContent = username;
+    document.getElementById('adminNewPassword').value = '';
+
+    const modalEl = document.getElementById('adminResetPwdModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+  }
+
+  // Admin Reset Password Submit
+  const adminResetPwdForm = document.getElementById('adminResetPwdForm');
+  if (adminResetPwdForm) {
+    adminResetPwdForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const userId = document.getElementById('resetPwdUserId').value;
+      const password = document.getElementById('adminNewPassword').value;
+
+      try {
+        const res = await fetch(`/api/users/${userId}/password`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('Password Reset', data.message, 'success');
+          const modal = bootstrap.Modal.getInstance(document.getElementById('adminResetPwdModal'));
+          if (modal) modal.hide();
+        } else {
+          showToast('Error', data.error || 'Password reset failed.', 'danger');
+        }
+      } catch (err) {
+        showToast('Error', 'Server communication failed.', 'danger');
+      }
+    });
+  }
+
+  // Delete User
+  async function deleteUser(userId, username) {
+    if (!confirm(`Are you sure you want to permanently delete user "${username}"?`)) return;
+
+    try {
+      const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('User Deleted', data.message, 'success');
+        const row = document.getElementById(`user-row-${userId}`);
+        if (row) row.remove();
+      } else {
+        showToast('Error', data.error || 'Failed to delete user.', 'danger');
+      }
+    } catch (err) {
+      showToast('Error', 'Server communication failed.', 'danger');
+    }
+  }
+
+  // Purge Logs Handlers
+  async function purgeLogsOlderThan(days) {
+    if (!confirm(`Are you sure you want to delete all traffic logs older than ${days} days?`)) return;
+    try {
+      const res = await fetch('/api/logs/purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days_old: days, purge_all: false })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('Logs Purged', data.message, 'success');
+      }
+    } catch (err) {
+      showToast('Error', 'Purge failed.', 'danger');
+    }
+  }
+
+  async function purgeAllLogs() {
+    if (!confirm('CAUTION: Are you sure you want to delete ALL traffic and security logs? This action cannot be undone.')) return;
+    try {
+      const res = await fetch('/api/logs/purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purge_all: true })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('Logs Cleared', data.message, 'success');
+      }
+    } catch (err) {
+      showToast('Error', 'Clear logs failed.', 'danger');
+    }
+  }
+</script>
+{% endblock %}

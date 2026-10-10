@@ -1,0 +1,145 @@
+{% extends 'base.html' %}
+
+{% block title %}Live Network Traffic Inspector - FirewallGuard{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column gap-4">
+
+  <!-- Header -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+    <div>
+      <h2 class="fw-bold text-white mb-1">Live Network Traffic & Socket Inspector</h2>
+      <p class="text-secondary small mb-0">Active socket inspection, live packet telemetry, and real-time firewall filtering evaluation.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      {% if current_user.role in ['Administrator', 'Security Operator'] %}
+      <button class="btn btn-outline-danger btn-sm" id="btnSimulateThreat" onclick="triggerThreatSimulation()">
+        <i class="bi bi-radioactive me-1"></i> Simulate Port Scan / Threat
+      </button>
+      {% endif %}
+      <div class="firewall-status-pill">
+        <span class="pulse-dot"></span>
+        <span>Polling Active Connections (3s)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Telemetry KPI Cards -->
+  <div class="row g-3">
+    <div class="col-sm-6 col-md-3">
+      <div class="security-card">
+        <div class="kpi-title">Inbound Throughput</div>
+        <div class="kpi-value text-cyan" id="liveInboundRate">342.8 KB/s</div>
+        <div class="mt-2 small text-muted">Incoming packet load</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-md-3">
+      <div class="security-card">
+        <div class="kpi-title">Outbound Throughput</div>
+        <div class="kpi-value text-purple" id="liveOutboundRate">189.4 KB/s</div>
+        <div class="mt-2 small text-muted">Outgoing socket stream</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-md-3">
+      <div class="security-card">
+        <div class="kpi-title">Monitored Sockets</div>
+        <div class="kpi-value text-light" id="liveActiveSockets">--</div>
+        <div class="mt-2 small text-muted">Active host TCP/UDP endpoints</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-md-3">
+      <div class="security-card">
+        <div class="kpi-title">Inspection State</div>
+        <div class="kpi-value text-success">Filtering</div>
+        <div class="mt-2 small text-muted">Windows Defender Subsystem</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Traffic Bandwidth Graph -->
+  <div class="security-card">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h6 class="fw-bold text-white mb-0"><i class="bi bi-graph-up text-cyan me-2"></i>Real-Time Bandwidth Distribution</h6>
+        <small class="text-muted">Dynamic socket packet metrics stream</small>
+      </div>
+      <div class="d-flex gap-3 text-secondary small">
+        <span><i class="bi bi-circle-fill text-cyan me-1" style="font-size: 8px;"></i> Inbound</span>
+        <span><i class="bi bi-circle-fill text-purple me-1" style="font-size: 8px;"></i> Outbound</span>
+      </div>
+    </div>
+    <div style="height: 240px; position: relative;">
+      <canvas id="liveBandwidthChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Active Connections & Sockets Table -->
+  <div class="security-card p-0">
+    <div class="p-3 border-bottom border-secondary d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div>
+        <h6 class="fw-bold text-white mb-0"><i class="bi bi-hdd-network text-cyan me-2"></i>Active Host Connections & Open Sockets</h6>
+        <small class="text-muted">Live inspection of listening services and established endpoints on host machine</small>
+      </div>
+      <div class="small text-muted">
+        <i class="bi bi-shield-check text-success me-1"></i> Evaluated against active firewall policies
+      </div>
+    </div>
+
+    <div class="custom-table-container border-0 rounded-0">
+      <table class="table-custom">
+        <thead>
+          <tr>
+            <th>Process / Service</th>
+            <th>Protocol</th>
+            <th>Direction</th>
+            <th>Local Endpoint</th>
+            <th>Remote Endpoint</th>
+            <th>Socket State</th>
+            <th>Data Transferred</th>
+            <th>Firewall Action</th>
+            {% if current_user.role == 'Administrator' %}
+            <th>Quick Containment</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody id="trafficTableBody" data-can-quick-block="{{ 'true' if current_user.role == 'Administrator' else 'false' }}">
+          <tr>
+            <td colspan="{% if current_user.role == 'Administrator' %}9{% else %}8{% endif %}" class="text-center py-4 text-muted">
+              <span class="spinner-border spinner-border-sm me-2"></span> Inspecting active network sockets...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal for Rule Creation (Global accessibility) -->
+{% include 'modals/rule_modal.html' %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/rules.js') }}"></script>
+<script src="{{ url_for('static', filename='js/traffic.js') }}"></script>
+<script>
+  async function triggerThreatSimulation() {
+    const btn = document.getElementById('btnSimulateThreat');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/traffic/simulate-threat', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('Threat Packet Simulated', data.message, data.event.action === 'Block' ? 'danger' : 'info');
+      } else {
+        showToast('Simulation Error', data.error || 'Failed to simulate packet.', 'warning');
+      }
+    } catch (err) {
+      showToast('Error', 'Could not dispatch simulation request.', 'danger');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+</script>
+{% endblock %}
