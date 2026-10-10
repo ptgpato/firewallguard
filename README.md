@@ -1,9 +1,4 @@
 # FirewallGuard: Web-Based Windows Firewall Rule Management & Network Traffic Filtering System (Alpha Development Phase)
-
-> **Course**: INFORMATION ASSURANCE AND SECURITY 2 (IAS 2)  
-> **Topic**: #19 Firewall Rule Management System  
-> **Technologies**: Python (Flask, Werkzeug), PowerShell (NetSecurity Subprocess), SQLite, HTML5/CSS3, JavaScript, Bootstrap 5, Chart.js
-
 ---
 
 ## 🛡️ Executive System Overview
@@ -143,16 +138,6 @@ python app.py
 If these variables are not set, FirewallGuard generates random one-time bootstrap passwords and prints them to the startup console. Existing databases are not reseeded. Change any legacy demonstration credentials before presenting the system.
 
 The original development credentials are not safe for deployment and should not be reused.
-
-### 6. Access Control and Defense Demonstration
-
-The application uses role-based access control:
-
-- **Administrator**: manage users, create/edit/delete rules, change profiles, and synchronize firewall rules.
-- **Security Operator**: inspect traffic and logs, simulate threats, toggle existing rules, and synchronize active rules.
-- **Viewer**: read-only dashboard, traffic, rules, and log access.
-
-State-changing browser requests include CSRF protection, and the server rejects requests without a valid same-origin token. Test firewall changes from an elevated PowerShell window and verify the resulting rule with `Get-NetFirewallRule`.
 
 ### 7. Legacy Development Accounts
 
